@@ -8,6 +8,12 @@ const BASE_URL = (typeof window !== 'undefined' && window.location?.protocol?.st
     : 'https://api.muapi.ai';
 const PROXY_WF_BASE = '/api/workflow';
 
+function notifyAuthRequired(status, detail) {
+    if (typeof window === 'undefined') return;
+    if (status !== 401 && status !== 403) return;
+    window.dispatchEvent(new CustomEvent('muapi:auth-required', { detail: { status, message: detail } }));
+}
+
 async function pollForResult(requestId, key, maxAttempts = 900, interval = 2000) {
     const pollUrl = `${BASE_URL}/api/v1/predictions/${requestId}/result`;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -19,6 +25,7 @@ async function pollForResult(requestId, key, maxAttempts = 900, interval = 2000)
             if (!response.ok) {
                 const errText = await response.text();
                 if (response.status >= 500) continue;
+                notifyAuthRequired(response.status, errText);
                 throw new Error(`Poll Failed: ${response.status} - ${errText.slice(0, 100)}`);
             }
             const data = await response.json();
@@ -41,6 +48,7 @@ async function submitAndPoll(endpoint, payload, key, onRequestId, maxAttempts = 
     });
     if (!response.ok) {
         const errText = await response.text();
+        notifyAuthRequired(response.status, errText);
         throw new Error(`API Request Failed: ${response.status} ${response.statusText} - ${errText.slice(0, 100)}`);
     }
     const submitData = await response.json();
@@ -209,6 +217,7 @@ export function uploadFile(apiKey, file, onProgress) {
                 } catch (e) {
                     // fallback to statusText
                 }
+                notifyAuthRequired(xhr.status, detail);
                 reject(new Error(`File upload failed: ${xhr.status} - ${detail}`));
             }
         };
@@ -227,6 +236,7 @@ export async function getUserBalance(apiKey) {
     });
     if (!response.ok) {
         const errText = await response.text();
+        notifyAuthRequired(response.status, errText);
         throw new Error(`Failed to fetch balance: ${response.status} - ${errText.slice(0, 100)}`);
     }
     return await response.json();
